@@ -2,7 +2,7 @@
 
 In this project, I will show you how you can use an ESP8266 modue like the Wemos D1 Mini to play MP3, TTS and RTTL. It is controlled over MQTT. You will be able to send it an MQTT message with the URL of the MP3 file and it will play it for it. It is also capable to doing basic TTS and playback RTTL (aka Nokia) ringtone.
 
-[![Monitor your car battery youtube video](https://img.youtube.com/vi/VnGRFwDrLHo/0.jpg)](https://youtu.be/VnGRFwDrLHo)
+[![Monitor your car battery youtube video](https://youtu.be/SPa9SMyPU58/0.jpg)](https://youtu.be/SPa9SMyPU58)
 
 
 ## Instructaions
