@@ -5,7 +5,7 @@ In this project, I will show you how you can use an ESP8266 modue like the Wemos
 [![MrDIY Audio Notifier youtube video](https://img.youtube.com/vi/SPa9SMyPU58/maxresdefault.jpg)](https://youtu.be/SPa9SMyPU58)
 
 
-## Instructaions
+## Instructions
 
 Please visit <a href="https://www.instructables.com/id/MQTT-Audio-Notifier-for-ESP8266-Play-MP3-TTS-RTTL">my Instructables page</a> page for full instructions or watch the video above.
 
