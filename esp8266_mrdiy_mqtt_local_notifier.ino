@@ -29,13 +29,15 @@
                              MQTT load: http://url-to-the-icecast-stream/file.mp3
 
      - Play Ringtone         MQTT topic: "mrdiynotifier/tone"
-                              MQTT load: RTTTL formated text, example: Soap:d=8,o=5,b=125:g,a,c6,p,a,4c6,4p,a,g,e,c,4p,4g,a
+                             MQTT load: RTTTL formated text, example: Soap:d=8,o=5,b=125:g,a,c6,p,a,4c6,4p,a,g,e,c,4p,4g,a
 
      - Say Text              MQTT topic: "mrdiynotifier/say"
-                              MQTT load: Text to be read, example: Hello There. How. Are. You?
+                             MQTT load: Text to be read, example: Hello There. How. Are. You?
 
      - Change Volume         MQTT topic: "mrdiynotifier/volume"
-                              MQTT load: a double between 0.00 and 1.00, example: 0.7
+                             MQTT load: a double between 0.00 and 1.00, example: 0.7
+
+     - Stop Playing         MQTT topic: "mrdiynotifier/stop"                           
 
      To get status:
 
@@ -46,7 +48,7 @@
                   "error"         error when receiving a command: example: MP3 file URL can't be loaded
                   "connected"     device just connected to MQTT server
 
-     - The notifier plays a 2 second audio clip when it is first booted and connected to Wifi
+     - The notifier plays a 2 second audio clip when it is first booted and connected to Wifi & MQTT
 
 
     To Upload to Wesmo D1 Mini:
@@ -67,7 +69,8 @@
 
     Many thanks to all the authors and contributors to the above libraries - you have done an amazing job!
 
-    For more info visit me at MrDIY.ca and find the Notifier Video on my YouTube channel.
+    For more info visit me at MrDIY.ca and find the Notifier Video on my YouTube channel:
+    https://youtu.be/SPa9SMyPU58
 
   ============================================================================================================== */
 
