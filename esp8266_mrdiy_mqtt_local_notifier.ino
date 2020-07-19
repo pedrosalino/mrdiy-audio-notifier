@@ -22,26 +22,26 @@
 
     Commands, to:
 
-     - Play MP3              MQTT topic: "/mrdiynotifier/play"
+     - Play MP3              MQTT topic: "/mqttFullTopic()/play"
                              MQTT load: http://url-to-the-mp3-file/file.mp3
 
-     - Play Icecast Stream   MQTT topic: "/mrdiynotifier/stream"
-                             MQTT load: http://url-to-the-icecast-stream/file.mp3
+     - Play Icecast Stream   MQTT topic: "/mqttFullTopic()/stream"
+                             MQTT load: http://url-to-the-icecast-stream/file.mp3, example: http://22203.live.streamtheworld.com/WHTAFM.mp3
 
-     - Play Ringtone         MQTT topic: "/mrdiynotifier/tone"
+     - Play Ringtone         MQTT topic: "/mqttFullTopic()/tone"
                              MQTT load: RTTTL formated text, example: Soap:d=8,o=5,b=125:g,a,c6,p,a,4c6,4p,a,g,e,c,4p,4g,a
 
-     - Say Text              MQTT topic: "/mrdiynotifier/say"
+     - Say Text              MQTT topic: "/mqttFullTopic()/say"
                              MQTT load: Text to be read, example: Hello There. How. Are. You?
 
-     - Change Volume         MQTT topic: "/mrdiynotifier/volume"
+     - Change Volume         MQTT topic: "/mqttFullTopic()/volume"
                              MQTT load: a double between 0.00 and 1.00, example: 0.7
 
-     - Stop Playing         MQTT topic: "/mrdiynotifier/stop"                           
+     - Stop Playing         MQTT topic: "/mqttFullTopic()/stop"
 
      To get status:
 
-     - The notifier sends status update on this MQTT topic: "/mrdiynotifier/status"
+     - The notifier sends status update on this MQTT topic: "/mqttFullTopic()/status"
 
                   "playing"       either paying an mp3, streaming, playing a ringtone or saying a text
                   "idle"          waiting for a command
@@ -118,12 +118,15 @@ byte i;
 char mqttServer[16];
 char mqttUserName[32];
 char mqttUserPassword[32];
+char mqttTopicPrefix[32];
+char mqttTopic[MQTT_MSG_SIZE];
 DNSServer             dnsServer;
 WebServer             server(80);
-IotWebConf            iotWebConf(thingName, &dnsServer, &server, wifiInitialApPassword);
+IotWebConf            iotWebConf(thingName, &dnsServer, &server, wifiInitialApPassword, "mrd2");
 IotWebConfParameter   mqttServerParam = IotWebConfParameter("MQTT server", "mqttServer", mqttServer, sizeof(mqttServer) );
 IotWebConfParameter   mqttUserNameParam = IotWebConfParameter("MQTT username", "mqttUser", mqttUserName, sizeof(mqttUserName));
 IotWebConfParameter   mqttUserPasswordParam = IotWebConfParameter("MQTT password", "mqttPass", mqttUserPassword, sizeof(mqttUserPassword), "password");
+IotWebConfParameter   mqttTopicParam = IotWebConfParameter("MQTT Topic", "mqttTopic", mqttTopicPrefix, sizeof(mqttTopicPrefix));
 
 
 /* ################################## Setup ############################################# */
@@ -136,6 +139,7 @@ void setup() {
   iotWebConf.addParameter(&mqttServerParam);
   iotWebConf.addParameter(&mqttUserNameParam);
   iotWebConf.addParameter(&mqttUserPasswordParam);
+  iotWebConf.addParameter(&mqttTopicParam);
   iotWebConf.setWifiConnectionCallback(&wifiConnected);
   iotWebConf.setFormValidator(&formValidator);
   iotWebConf.setStatusPin(LED_BUILTIN);
@@ -163,7 +167,7 @@ void loop() {
   mqttReconnect();
   mqttClient.loop();
   // give processor priority to audio
-  if(!mp3) iotWebConf.doLoop();
+  if (!mp3) iotWebConf.doLoop();
   if (mp3   && !mp3->loop())    stopPlaying();
   if (wav   && !wav->loop())    stopPlaying();
   if (rtttl && !rtttl->loop())  stopPlaying();
@@ -259,7 +263,7 @@ void onMqttMessage(char* topic, byte* payload, unsigned int length)  {
     Serial.println(newMsg);
 #endif
     // got a new URL to play ------------------------------------------------
-    if ( !strcmp(topic, "/mrdiynotifier/play")) {
+    if ( !strcmp(topic, mqttFullTopic("play") ) ) {
       stopPlaying();
       file_http = new AudioFileSourceHTTPStream();
       if ( file_http->open(newMsg)) {
@@ -275,7 +279,7 @@ void onMqttMessage(char* topic, byte* payload, unsigned int length)  {
     }
 
     // got a new URL to play ------------------------------------------------
-    if ( !strcmp(topic, "/mrdiynotifier/stream")) {
+    if ( !strcmp(topic, mqttFullTopic("stream"))) {
       stopPlaying();
       file_icy = new AudioFileSourceICYStream();
       if ( file_icy->open(newMsg)) {
@@ -291,7 +295,7 @@ void onMqttMessage(char* topic, byte* payload, unsigned int length)  {
     }
 
     // got a tone request --------------------------------------------------
-    if ( !strcmp(topic, "/mrdiynotifier/tone")) {
+    if ( !strcmp(topic, mqttFullTopic("tone") ) ) {
       stopPlaying();
       broadcastStatus("playing");
       file_progmem = new AudioFileSourcePROGMEM( newMsg, sizeof(newMsg) );
@@ -301,7 +305,7 @@ void onMqttMessage(char* topic, byte* payload, unsigned int length)  {
     }
 
     //got a TTS request ----------------------------------------------------
-    if ( !strcmp(topic, "/mrdiynotifier/say")) {
+    if ( !strcmp(topic, mqttFullTopic("say"))) {
       stopPlaying();
       broadcastStatus("playing");
       ESP8266SAM *sam = new ESP8266SAM;
@@ -312,7 +316,7 @@ void onMqttMessage(char* topic, byte* payload, unsigned int length)  {
     }
 
     // got a volume request, expecting double [0.0,1.0] ---------------------
-    if ( !strcmp(topic, "/mrdiynotifier/volume")) {
+    if ( !strcmp(topic, mqttFullTopic("volume"))) {
       volume_level = atof(newMsg);
       if ( volume_level < 0.0 ) volume_level = 0;
       if ( volume_level > 1.0 ) volume_level = 0.7;
@@ -320,7 +324,7 @@ void onMqttMessage(char* topic, byte* payload, unsigned int length)  {
     }
 
     // got a stop request  --------------------------------------------------
-    if ( !strcmp(topic, "/mrdiynotifier/stop")) {
+    if ( !strcmp(topic, mqttFullTopic("stop"))) {
       stopPlaying();
     }
   }
@@ -331,7 +335,7 @@ void broadcastStatus(String msg) {
   if ( playing_status != msg) {
     char charBuf[msg.length() + 1];
     msg.toCharArray(charBuf, msg.length() + 1);
-    mqttClient.publish("/mrdiynotifier/status", charBuf);
+    mqttClient.publish(mqttFullTopic("status"), charBuf);
     playing_status = msg;
 #ifdef DEBUG_FLAG
     Serial.println();
@@ -346,13 +350,12 @@ void mqttReconnect() {
   if (!mqttClient.connected()) {
     if (mqttClient.connect("MrDIY Notifier", mqttUserName, mqttUserPassword)) {
       broadcastStatus("connected");
-      mqttClient.subscribe("/mrdiynotifier/play");
-      mqttClient.subscribe("/mrdiynotifier/stream");
-      mqttClient.subscribe("/mrdiynotifier/tone");
-      mqttClient.subscribe("/mrdiynotifier/beep");
-      mqttClient.subscribe("/mrdiynotifier/say");
-      mqttClient.subscribe("/mrdiynotifier/stop");
-      mqttClient.subscribe("/mrdiynotifier/volume");
+      mqttClient.subscribe(mqttFullTopic("play"));
+      mqttClient.subscribe(mqttFullTopic("stream"));
+      mqttClient.subscribe(mqttFullTopic("tone"));
+      mqttClient.subscribe(mqttFullTopic("say"));
+      mqttClient.subscribe(mqttFullTopic("stop"));
+      mqttClient.subscribe(mqttFullTopic("volume"));
 #ifdef DEBUG_FLAG
       Serial.println();
       Serial.print(F("Connected to MQTT: "));
@@ -392,4 +395,13 @@ boolean formValidator() {
     valid = false;
   }
   return valid;
+}
+
+char* mqttFullTopic(char action[]) {
+
+  strcpy (mqttTopic, "/");
+  strcat (mqttTopic, mqttTopicPrefix);
+  strcat (mqttTopic, "/");
+  strcat (mqttTopic, action);
+  return mqttTopic;
 }
