@@ -144,7 +144,7 @@ char mqttTopicPrefix[32];
 char mqttTopic[MQTT_MSG_SIZE];
 DNSServer             dnsServer;
 WebServer             server(80);
-IotWebConf            iotWebConf(thingName.c_str(), &dnsServer, &server, wifiInitialApPassword, "JamesOGorman");
+IotWebConf            iotWebConf(thingName.c_str(), &dnsServer, &server, wifiInitialApPassword, "MrD3");
 IotWebConfParameter   mqttServerParam = IotWebConfParameter("MQTT server", "mqttServer", mqttServer, sizeof(mqttServer) );
 IotWebConfParameter   mqttUserNameParam = IotWebConfParameter("MQTT username", "mqttUser", mqttUserName, sizeof(mqttUserName));
 IotWebConfParameter   mqttUserPasswordParam = IotWebConfParameter("MQTT password", "mqttPass", mqttUserPassword, sizeof(mqttUserPassword), "password");
