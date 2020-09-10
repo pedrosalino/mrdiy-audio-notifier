@@ -22,26 +22,26 @@
 
     Commands, to:
 
-     - Play MP3              MQTT topic: "/mqttFullTopic()/play"
+     - Play MP3              MQTT topic: "mqttFullTopic()/play"
                              MQTT load: http://url-to-the-mp3-file/file.mp3
 
-     - Play Icecast Stream   MQTT topic: "/mqttFullTopic()/stream"
+     - Play Icecast Stream   MQTT topic: "mqttFullTopic()/stream"
                              MQTT load: http://url-to-the-icecast-stream/file.mp3, example: http://22203.live.streamtheworld.com/WHTAFM.mp3
 
-     - Play Ringtone         MQTT topic: "/mqttFullTopic()/tone"
+     - Play Ringtone         MQTT topic: "mqttFullTopic()/tone"
                              MQTT load: RTTTL formated text, example: Soap:d=8,o=5,b=125:g,a,c6,p,a,4c6,4p,a,g,e,c,4p,4g,a
 
-     - Say Text              MQTT topic: "/mqttFullTopic()/say"
+     - Say Text              MQTT topic: "mqttFullTopic()/say"
                              MQTT load: Text to be read, example: Hello There. How. Are. You?
 
-     - Change Volume         MQTT topic: "/mqttFullTopic()/volume"
+     - Change Volume         MQTT topic: "mqttFullTopic()/volume"
                              MQTT load: a double between 0.00 and 1.00, example: 0.7
 
-     - Stop Playing         MQTT topic: "/mqttFullTopic()/stop"
+     - Stop Playing         MQTT topic: "mqttFullTopic()/stop"
 
      To get status:
 
-     - The notifier sends status update on this MQTT topic: "/mqttFullTopic()/status"
+     - The notifier sends status update on this MQTT topic: "mqttFullTopic()/status"
 
                   "playing"       either paying an mp3, streaming, playing a ringtone or saying a text
                   "idle"          waiting for a command
@@ -76,6 +76,8 @@
 
 //#define DEBUG_FLAG
 
+#define USE_I2S //uncomment to use I2S DAC instead of Serial Rx pin.
+
 #include "Arduino.h"
 #include "boot_sound.h"
 #include "ESP8266WiFi.h"
@@ -87,7 +89,13 @@
 #include "AudioGeneratorMP3.h"
 #include "AudioGeneratorWAV.h"
 #include "AudioGeneratorRTTTL.h"
-#include "AudioOutputI2SNoDAC.h"
+
+#ifdef USE_I2S
+  #include "AudioOutputI2S.h"
+#else
+  #include "AudioOutputI2SNoDAC.h"
+#endif
+
 #include "ESP8266SAM.h"
 #include "IotWebConf.h"
 
@@ -98,12 +106,19 @@ AudioFileSourceHTTPStream *file_http = NULL;
 AudioFileSourcePROGMEM    *file_progmem = NULL;
 AudioFileSourceICYStream *file_icy = NULL;
 AudioFileSourceBuffer     *buff = NULL;
-AudioOutputI2SNoDAC       *out = NULL;
+
+#ifdef USE_I2S
+  AudioOutputI2S       *out = NULL;
+#else
+  AudioOutputI2SNoDAC       *out = NULL;
+#endif
 
 WiFiClient                wifiClient;
 PubSubClient              mqttClient(wifiClient);
 #define  port             1883
 #define  MQTT_MSG_SIZE    256
+
+#define LED_Pin 0 // for the external LED pin.
 
 // AudioRelated ---------------------------
 float volume_level              = 0.8;
@@ -112,8 +127,15 @@ const int preallocateBufferSize = 2048;
 void *preallocateBuffer         = NULL;
 byte i;
 
+//Get chip ID to append to ThingName to make unique
+#ifdef ESP8266
+String ChipId = String(ESP.getChipId(), HEX);
+#elif ESP32
+String ChipId = String((uint32_t)ESP.getEfuseMac(), HEX);
+#endif
+
 // WifiManager -----------------------------
-#define thingName  "MrDIY Notifier"
+String thingName = String("MrDIY Notifier - ") + ChipId; 
 #define wifiInitialApPassword "mrdiy.ca"
 char mqttServer[16];
 char mqttUserName[32];
@@ -122,16 +144,23 @@ char mqttTopicPrefix[32];
 char mqttTopic[MQTT_MSG_SIZE];
 DNSServer             dnsServer;
 WebServer             server(80);
-IotWebConf            iotWebConf(thingName, &dnsServer, &server, wifiInitialApPassword, "mrd2");
+IotWebConf            iotWebConf(thingName.c_str(), &dnsServer, &server, wifiInitialApPassword, "JamesOGorman");
 IotWebConfParameter   mqttServerParam = IotWebConfParameter("MQTT server", "mqttServer", mqttServer, sizeof(mqttServer) );
 IotWebConfParameter   mqttUserNameParam = IotWebConfParameter("MQTT username", "mqttUser", mqttUserName, sizeof(mqttUserName));
 IotWebConfParameter   mqttUserPasswordParam = IotWebConfParameter("MQTT password", "mqttPass", mqttUserPassword, sizeof(mqttUserPassword), "password");
 IotWebConfParameter   mqttTopicParam = IotWebConfParameter("MQTT Topic", "mqttTopic", mqttTopicPrefix, sizeof(mqttTopicPrefix));
 
+//Last Will and Testament (LWT)
+byte willQoS = 0;
+char* willTopic = "LWT";
+const char* willMessage ="Offline";
+boolean willRetain = false;
 
 /* ################################## Setup ############################################# */
 
 void setup() {
+  pinMode(LED_Pin, OUTPUT); // LED pin
+  analogWrite(LED_Pin, 100);
 
 #ifdef DEBUG_FLAG
   Serial.begin(115200);
@@ -155,8 +184,13 @@ void setup() {
 
   server.on("/", [] { iotWebConf.handleConfig(); });
   server.onNotFound([] {  iotWebConf.handleNotFound();  });
-
-  out = new AudioOutputI2SNoDAC();
+#ifdef USE_I2S
+  out = new AudioOutputI2S();
+  Serial.println("Using I2S output");
+#else
+  out = new AudioOutputI2SNoDAC(); 
+  Serial.println("Using No DAC - using Serial port Rx pin");
+#endif
   out->SetGain(volume_level);
 }
 
@@ -202,6 +236,7 @@ void playBootSound() {
 }
 
 void stopPlaying() {
+  analogWrite(LED_Pin, 255); //Turn LED back to full brightness
 
   if (mp3) {
 #ifdef DEBUG_FLAG
@@ -243,7 +278,7 @@ void stopPlaying() {
     delete file_icy;
     file_icy = NULL;
   }
-  broadcastStatus("idle");
+  broadcastStatus("status", "idle");
 }
 
 /* ################################## MQTT ############################################### */
@@ -267,14 +302,15 @@ void onMqttMessage(char* topic, byte* payload, unsigned int length)  {
       stopPlaying();
       file_http = new AudioFileSourceHTTPStream();
       if ( file_http->open(newMsg)) {
-        broadcastStatus("playing");
+        broadcastStatus("status", "playing");
+        analogWrite(LED_Pin, 100); // Dim LED while playing
         buff = new AudioFileSourceBuffer(file_http, preallocateBuffer, preallocateBufferSize);
         mp3 = new AudioGeneratorMP3();
         mp3->begin(buff, out);
       } else {
         stopPlaying();
-        broadcastStatus("error");
-        broadcastStatus("idle");
+        broadcastStatus("status", "error");
+        broadcastStatus("status", "idle");
       }
     }
 
@@ -283,36 +319,39 @@ void onMqttMessage(char* topic, byte* payload, unsigned int length)  {
       stopPlaying();
       file_icy = new AudioFileSourceICYStream();
       if ( file_icy->open(newMsg)) {
-        broadcastStatus("playing");
+        broadcastStatus("status", "playing");
+        analogWrite(LED_Pin, 100); // Dim LED while playing
         buff = new AudioFileSourceBuffer(file_icy, preallocateBuffer, preallocateBufferSize);
         mp3 = new AudioGeneratorMP3();
         mp3->begin(buff, out);
       } else {
         stopPlaying();
-        broadcastStatus("error");
-        broadcastStatus("idle");
+        broadcastStatus("status", "error");
+        broadcastStatus("status", "idle");
       }
     }
 
     // got a tone request --------------------------------------------------
     if ( !strcmp(topic, mqttFullTopic("tone") ) ) {
       stopPlaying();
-      broadcastStatus("playing");
+      broadcastStatus("status", "playing");
+      analogWrite(LED_Pin, 100); // Dim LED while playing
       file_progmem = new AudioFileSourcePROGMEM( newMsg, sizeof(newMsg) );
       rtttl = new AudioGeneratorRTTTL();
       rtttl->begin(file_progmem, out);
-      broadcastStatus("idle");
+      broadcastStatus("status", "idle");
     }
 
     //got a TTS request ----------------------------------------------------
     if ( !strcmp(topic, mqttFullTopic("say"))) {
       stopPlaying();
-      broadcastStatus("playing");
+      broadcastStatus("status", "playing");
+      analogWrite(LED_Pin, 100); // Dim LED while playing
       ESP8266SAM *sam = new ESP8266SAM;
       sam->Say(out, newMsg);
       delete sam;
       stopPlaying();
-      broadcastStatus("idle");
+      broadcastStatus("status", "idle");
     }
 
     // got a volume request, expecting double [0.0,1.0] ---------------------
@@ -330,12 +369,12 @@ void onMqttMessage(char* topic, byte* payload, unsigned int length)  {
   }
 }
 
-void broadcastStatus(String msg) {
+void broadcastStatus(char topic[], String msg) {
 
   if ( playing_status != msg) {
     char charBuf[msg.length() + 1];
     msg.toCharArray(charBuf, msg.length() + 1);
-    mqttClient.publish(mqttFullTopic("status"), charBuf);
+    mqttClient.publish(mqttFullTopic(topic), charBuf);
     playing_status = msg;
 #ifdef DEBUG_FLAG
     Serial.println();
@@ -345,11 +384,14 @@ void broadcastStatus(String msg) {
   }
 }
 
+
 void mqttReconnect() {
 
   if (!mqttClient.connected()) {
-    if (mqttClient.connect("MrDIY Notifier", mqttUserName, mqttUserPassword)) {
-      broadcastStatus("connected");
+    analogWrite(LED_Pin, 100); //turn LED low if not connected 
+    
+    if (mqttClient.connect(thingName.c_str(), mqttUserName, mqttUserPassword, mqttFullTopic(willTopic), willQoS, willRetain, willMessage)) {
+      broadcastStatus("status", "connected");
       mqttClient.subscribe(mqttFullTopic("play"));
       mqttClient.subscribe(mqttFullTopic("stream"));
       mqttClient.subscribe(mqttFullTopic("tone"));
@@ -361,7 +403,11 @@ void mqttReconnect() {
       Serial.print(F("Connected to MQTT: "));
       Serial.println(F("mrdiynotifier"));
 #endif
-      broadcastStatus("idle");
+      broadcastStatus(willTopic, "Online");
+      broadcastStatus("ThingName", thingName.c_str());
+      broadcastStatus("IPAddress", WiFi.localIP().toString()); 
+      broadcastStatus("status", "idle");
+      analogWrite(LED_Pin, 255); // Turn LED HIGH once connected to MQTT
     }
   }
 }
@@ -398,9 +444,7 @@ boolean formValidator() {
 }
 
 char* mqttFullTopic(char action[]) {
-
-  strcpy (mqttTopic, "/");
-  strcat (mqttTopic, mqttTopicPrefix);
+  strcpy (mqttTopic, mqttTopicPrefix);
   strcat (mqttTopic, "/");
   strcat (mqttTopic, action);
   return mqttTopic;
