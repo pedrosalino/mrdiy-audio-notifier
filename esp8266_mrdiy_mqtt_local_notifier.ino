@@ -20,7 +20,7 @@
            USB 5V -----------------------------+
 
 
-    Commands, to:
+    Commands:
 
      - Play MP3              MQTT topic: "mqttFullTopic()/play"
                              MQTT load: http://url-to-the-mp3-file/file.mp3
@@ -51,7 +51,7 @@
      - The notifier plays a 2 second audio clip when it is first booted and connected to Wifi & MQTT
 
 
-    To Upload to Wesmo D1 Mini:
+    To Upload to Wemos D1 Mini:
 
      - Set CPU Frequency to 160MHz
      - Set IwIP to V2 Higher Bandwidth
@@ -69,14 +69,13 @@
 
     Many thanks to all the authors and contributors to the above libraries - you have done an amazing job!
 
-    For more info visit me at MrDIY.ca and find the Notifier Video on my YouTube channel:
-    https://youtu.be/SPa9SMyPU58
+    For more info visit me at MrDIY.ca
+    Instruction video https://youtu.be/SPa9SMyPU58
 
   ============================================================================================================== */
 
 //#define DEBUG_FLAG
-
-#define USE_I2S //uncomment to use I2S DAC instead of Serial Rx pin.
+//#define USE_I2S                 // uncomment to use I2S DAC instead of Rx pin
 
 #include "Arduino.h"
 #include "boot_sound.h"
@@ -89,13 +88,11 @@
 #include "AudioGeneratorMP3.h"
 #include "AudioGeneratorWAV.h"
 #include "AudioGeneratorRTTTL.h"
-
 #ifdef USE_I2S
   #include "AudioOutputI2S.h"
 #else
   #include "AudioOutputI2SNoDAC.h"
 #endif
-
 #include "ESP8266SAM.h"
 #include "IotWebConf.h"
 
@@ -106,7 +103,6 @@ AudioFileSourceHTTPStream *file_http = NULL;
 AudioFileSourcePROGMEM    *file_progmem = NULL;
 AudioFileSourceICYStream *file_icy = NULL;
 AudioFileSourceBuffer     *buff = NULL;
-
 #ifdef USE_I2S
   AudioOutputI2S       *out = NULL;
 #else
@@ -118,7 +114,7 @@ PubSubClient              mqttClient(wifiClient);
 #define  port             1883
 #define  MQTT_MSG_SIZE    256
 
-#define LED_Pin 0 // for the external LED pin.
+#define LED_Pin 0                       // for the external LED pin.
 
 // AudioRelated ---------------------------
 float volume_level              = 0.8;
@@ -159,7 +155,8 @@ boolean willRetain = false;
 /* ################################## Setup ############################################# */
 
 void setup() {
-  pinMode(LED_Pin, OUTPUT); // LED pin
+
+  pinMode(LED_Pin, OUTPUT);               // LED pin
   analogWrite(LED_Pin, 100);
 
 #ifdef DEBUG_FLAG
@@ -236,7 +233,7 @@ void playBootSound() {
 }
 
 void stopPlaying() {
-  analogWrite(LED_Pin, 255); //Turn LED back to full brightness
+  analogWrite(LED_Pin, 255);                //Turn LED back to full brightness
 
   if (mp3) {
 #ifdef DEBUG_FLAG
@@ -303,7 +300,7 @@ void onMqttMessage(char* topic, byte* payload, unsigned int length)  {
       file_http = new AudioFileSourceHTTPStream();
       if ( file_http->open(newMsg)) {
         broadcastStatus("status", "playing");
-        analogWrite(LED_Pin, 100); // Dim LED while playing
+        analogWrite(LED_Pin, 100);                    // Dim LED while playing
         buff = new AudioFileSourceBuffer(file_http, preallocateBuffer, preallocateBufferSize);
         mp3 = new AudioGeneratorMP3();
         mp3->begin(buff, out);
@@ -320,7 +317,7 @@ void onMqttMessage(char* topic, byte* payload, unsigned int length)  {
       file_icy = new AudioFileSourceICYStream();
       if ( file_icy->open(newMsg)) {
         broadcastStatus("status", "playing");
-        analogWrite(LED_Pin, 100); // Dim LED while playing
+        analogWrite(LED_Pin, 100);                  // Dim LED while playing
         buff = new AudioFileSourceBuffer(file_icy, preallocateBuffer, preallocateBufferSize);
         mp3 = new AudioGeneratorMP3();
         mp3->begin(buff, out);
@@ -335,7 +332,7 @@ void onMqttMessage(char* topic, byte* payload, unsigned int length)  {
     if ( !strcmp(topic, mqttFullTopic("tone") ) ) {
       stopPlaying();
       broadcastStatus("status", "playing");
-      analogWrite(LED_Pin, 100); // Dim LED while playing
+      analogWrite(LED_Pin, 100);                        // Dim LED while playing
       file_progmem = new AudioFileSourcePROGMEM( newMsg, sizeof(newMsg) );
       rtttl = new AudioGeneratorRTTTL();
       rtttl->begin(file_progmem, out);
@@ -346,7 +343,7 @@ void onMqttMessage(char* topic, byte* payload, unsigned int length)  {
     if ( !strcmp(topic, mqttFullTopic("say"))) {
       stopPlaying();
       broadcastStatus("status", "playing");
-      analogWrite(LED_Pin, 100); // Dim LED while playing
+      analogWrite(LED_Pin, 100);                      // Dim LED while playing
       ESP8266SAM *sam = new ESP8266SAM;
       sam->Say(out, newMsg);
       delete sam;
@@ -388,7 +385,7 @@ void broadcastStatus(char topic[], String msg) {
 void mqttReconnect() {
 
   if (!mqttClient.connected()) {
-    analogWrite(LED_Pin, 100); //turn LED low if not connected 
+    analogWrite(LED_Pin, 100);                      // turn LED off if not connected 
     
     if (mqttClient.connect(thingName.c_str(), mqttUserName, mqttUserPassword, mqttFullTopic(willTopic), willQoS, willRetain, willMessage)) {
       broadcastStatus("status", "connected");
@@ -407,7 +404,7 @@ void mqttReconnect() {
       broadcastStatus("ThingName", thingName.c_str());
       broadcastStatus("IPAddress", WiFi.localIP().toString()); 
       broadcastStatus("status", "idle");
-      analogWrite(LED_Pin, 255); // Turn LED HIGH once connected to MQTT
+      analogWrite(LED_Pin, 255);              // Turn LED on once connected to MQTT
     }
   }
 }
