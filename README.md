@@ -1,6 +1,6 @@
 # MrDIY Audio Notifier
 
-In this project, I will show you how you can use an ESP8266 modue like the Wemos D1 Mini to play MP3, TTS and RTTL. It is controlled over MQTT. You will be able to send it an MQTT message with the URL of the MP3 file and it will play it for it. It is also capable to doing basic TTS and playback RTTL (aka Nokia) ringtone.
+In this project, I will show you how you can use an ESP8266 module or board like the Wemos D1 Mini to play MP3, TTS and RTTL. It is controlled over MQTT. You will be able to send it an MQTT message with the URL of the MP3 file and it will play it for it. It is also capable to doing basic TTS and playback RTTL (aka Nokia) ringtone.
 <br><br><br>
 **Watch the video**: click on the image below:
 
@@ -15,6 +15,4 @@ Please visit <a href="https://www.instructables.com/id/MQTT-Audio-Notifier-for-E
 
 
 ## Thanks
-Thanks to the authors of StellaPlayer, libMAD and ESP8266Audio for releasing their code freely, and to the maintainers and contributors to the ESP8266 Arduino port.
-
-
+Many thanks to all the authors and contributors to the open source libraries I have used. You have done an amazing job for the community!
