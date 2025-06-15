@@ -1,9 +1,10 @@
 image: gitpod/workspace-full
 
 tasks:
-  - init: pip install -r requirements.txt
-    command: python3 main.py
-
-ports:
-  - port: 8000
-    onOpen: ignore
+  - init: |
+      curl -fsSL https://raw.githubusercontent.com/arduino/arduino-cli/master/install.sh | sh
+      arduino-cli config init
+      arduino-cli core update-index
+      arduino-cli core install esp8266:esp8266
+  - command: |
+      echo "Arduino CLI ist bereit. Nutze 'arduino-cli compile' zum Kompilieren."
