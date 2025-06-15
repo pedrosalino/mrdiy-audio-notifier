@@ -1,0 +1,9 @@
+image: gitpod/workspace-full
+
+tasks:
+  - init: pip install -r requirements.txt
+    command: python3 main.py
+
+ports:
+  - port: 8000
+    onOpen: ignore
