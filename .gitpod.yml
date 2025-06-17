@@ -2,9 +2,14 @@ image: gitpod/workspace-full
 
 tasks:
   - init: |
-      curl -fsSL https://raw.githubusercontent.com/arduino/arduino-cli/master/install.sh | sh
-      arduino-cli config init
-      arduino-cli core update-index
-      arduino-cli core install esp8266:esp8266
-  - command: |
-      echo "Arduino CLI ist bereit. Nutze 'arduino-cli compile' zum Kompilieren."
+      # Update pip & setuptools
+      pip3 install --upgrade pip setuptools
+      # Installiere PlatformIO CLI in ~/.local/bin
+      pip3 install --user platformio
+
+  # PlatformIO direkt über absoluten Pfad ausführen
+  - command: ~/.local/bin/pio run
+
+ports:
+  - port: 8000
+    onOpen: ignore
