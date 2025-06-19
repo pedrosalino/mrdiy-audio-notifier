@@ -143,10 +143,17 @@ iotwebconf::TextParameter mqttUserNameParam = iotwebconf::TextParameter("MQTT us
 iotwebconf::PasswordParameter mqttUserPasswordParam = iotwebconf::PasswordParameter("MQTT password", "mqttPass", mqttUserPassword, sizeof(mqttUserPassword), "password");
 iotwebconf::TextParameter mqttTopicParam = iotwebconf::TextParameter("MQTT Topic", "mqttTopic", mqttTopicPrefix, sizeof(mqttTopicPrefix));
 
-#define LED_Pin           5       // external LED pin
-bool ledState = false;
-unsigned long previousMillis = 0;
-const long blinkInterval = 500; // 500ms
+#define LED1_Pin D5  // z. B. GPIO14
+#define LED2_Pin D6  // z. B. GPIO12
+#define LED3_Pin D7  // z. B. GPIO13
+
+unsigned long lastBlink1 = 0;
+unsigned long lastBlink2 = 0;
+unsigned long lastBlink3 = 0;
+
+bool ledState1 = false;
+bool ledState2 = false;
+bool ledState3 = false;
 
 /* ################################## Setup ############################################# */
 
@@ -156,8 +163,9 @@ void setup() {
   Serial.begin(115200);
 #endif
 
-pinMode(LED_Pin, OUTPUT); 
-digitalWrite(LED_Pin, LOW);
+pinMode(LED1_Pin, OUTPUT);
+pinMode(LED2_Pin, OUTPUT);
+pinMode(LED3_Pin, OUTPUT);
 
   mqttgroup.addItem(&mqttServerParam);
   mqttgroup.addItem(&mqttUserNameParam);
@@ -204,20 +212,37 @@ void loop() {
   if (rtttl && !rtttl->loop())  stopPlaying();
 
   // LED-Blinksteuerung
-  if ((mp3 && mp3->isRunning()) || 
-      (wav && wav->isRunning()) ||
-      (rtttl && rtttl->isRunning())) {
-    
-    unsigned long currentMillis = millis();
-    if (currentMillis - previousMillis >= blinkInterval) {
-      previousMillis = currentMillis;
-      ledState = !ledState;
-      digitalWrite(LED_Pin, ledState);
-    }
+unsigned long currentMillis = millis();
 
-  } else {
-    digitalWrite(LED_Pin, LOW); // aus, wenn nichts spielt
+if (mp3 && mp3->isRunning()) {
+  // LED 1: blinkt alle 50 ms
+  if (currentMillis - lastBlink1 >= 50) {
+    lastBlink1 = currentMillis;
+    ledState1 = !ledState1;
+    digitalWrite(LED1_Pin, ledState1);
   }
+
+  // LED 2: blinkt alle 100 ms
+  if (currentMillis - lastBlink2 >= 100) {
+    lastBlink2 = currentMillis;
+    ledState2 = !ledState2;
+    digitalWrite(LED2_Pin, ledState2);
+  }
+
+  // LED 3: blinkt alle 150 ms
+  if (currentMillis - lastBlink3 >= 150) {
+    lastBlink3 = currentMillis;
+    ledState3 = !ledState3;
+    digitalWrite(LED3_Pin, ledState3);
+  }
+
+} else {
+  // Alle LEDs aus, wenn nichts spielt
+  digitalWrite(LED1_Pin, LOW);
+  digitalWrite(LED2_Pin, LOW);
+  digitalWrite(LED3_Pin, LOW);
+}
+
 
 #ifdef DEBUG_FLAG
   if (mp3 && mp3->isRunning()) {
