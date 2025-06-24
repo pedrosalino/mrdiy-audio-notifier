@@ -203,53 +203,45 @@ pinMode(LED3_Pin, OUTPUT);
 /* ##################################### Loop ############################################# */
 
 void loop() {
+
   mqttReconnect();
   mqttClient.loop();
-  if (!mp3) iotWebConf.doLoop();
+  if (!mp3) iotWebConf.doLoop();      // give processor priority to audio
   if (mp3   && !mp3->loop())    stopPlaying();
   if (wav   && !wav->loop())    stopPlaying();
   if (rtttl && !rtttl->loop())  stopPlaying();
 
   // LED-Blinksteuerung
-  unsigned long currentMillis = millis();
+unsigned long currentMillis = millis();
 
-  // Nur wenn lokales MP3 läuft und Dateiname NICHT mit "song" beginnt
-  bool isLocalFile = !currentFileName.startsWith("http://");
-  String filename = currentFileName.substring(currentFileName.lastIndexOf("/") + 1);
-  bool isSongName = filename.startsWith("song");
-
-  bool blinkAllowed = (mp3 && mp3->isRunning() && isLocalFile && !isSongName);
-
-  if (blinkAllowed) {
-    // LED 1: blinkt alle 50 ms
-    if (currentMillis - lastBlink1 >= 50) {
-      lastBlink1 = currentMillis;
-      ledState1 = !ledState1;
-      digitalWrite(LED1_Pin, ledState1);
-    }
-
-    // LED 2: blinkt alle 100 ms
-    if (currentMillis - lastBlink2 >= 100) {
-      lastBlink2 = currentMillis;
-      ledState2 = !ledState2;
-      digitalWrite(LED2_Pin, ledState2);
-    }
-
-    // LED 3: blinkt alle 150 ms
-    if (currentMillis - lastBlink3 >= 150) {
-      lastBlink3 = currentMillis;
-      ledState3 = !ledState3;
-      digitalWrite(LED3_Pin, ledState3);
-    }
-
-  } else {
-    // LEDs aus bei RTTTL oder Dateien, die mit "song" beginnen
-    digitalWrite(LED1_Pin, LOW);
-    digitalWrite(LED2_Pin, LOW);
-    digitalWrite(LED3_Pin, LOW);
+if (mp3 && mp3->isRunning()) {
+  // LED 1: blinkt alle 50 ms
+  if (currentMillis - lastBlink1 >= 50) {
+    lastBlink1 = currentMillis;
+    ledState1 = !ledState1;
+    digitalWrite(LED1_Pin, ledState1);
   }
-}
 
+  // LED 2: blinkt alle 100 ms
+  if (currentMillis - lastBlink2 >= 100) {
+    lastBlink2 = currentMillis;
+    ledState2 = !ledState2;
+    digitalWrite(LED2_Pin, ledState2);
+  }
+
+  // LED 3: blinkt alle 150 ms
+  if (currentMillis - lastBlink3 >= 150) {
+    lastBlink3 = currentMillis;
+    ledState3 = !ledState3;
+    digitalWrite(LED3_Pin, ledState3);
+  }
+
+} else {
+  // Alle LEDs aus, wenn nichts spielt
+  digitalWrite(LED1_Pin, LOW);
+  digitalWrite(LED2_Pin, LOW);
+  digitalWrite(LED3_Pin, LOW);
+}
 
 
 #ifdef DEBUG_FLAG
