@@ -1,4 +1,5 @@
 /*  ============================================================================================================
+    Notifier Ergänzung : 3LED Blink bei Sprachwiedergabe ( TTl und mp3 ohne "song" am Anfang des Dateinamens)
     MrDIY Audio Notifier is a cloud-free media notifier that can play MP3s, stream icecast radios, read text 
     and play RTTTL ringtones. It is controller over MQTT.
 
@@ -155,6 +156,17 @@ bool ledState1 = false;
 bool ledState2 = false;
 bool ledState3 = false;
 
+bool shouldBlink = false;
+bool isMP3Playing = false;
+
+String currentMp3Filename = "";
+
+String extractFilename(String url) {
+  int lastSlash = url.lastIndexOf('/');
+  if (lastSlash == -1) return url;
+  return url.substring(lastSlash + 1);
+}
+
 /* ################################## Setup ############################################# */
 
 void setup() {
@@ -214,22 +226,19 @@ void loop() {
   // LED-Blinksteuerung
 unsigned long currentMillis = millis();
 
-if (mp3 && mp3->isRunning()) {
-  // LED 1: blinkt alle 50 ms
+if (mp3 && mp3->isRunning() && shouldBlink) {
   if (currentMillis - lastBlink1 >= 50) {
     lastBlink1 = currentMillis;
     ledState1 = !ledState1;
     digitalWrite(LED1_Pin, ledState1);
   }
 
-  // LED 2: blinkt alle 100 ms
   if (currentMillis - lastBlink2 >= 100) {
     lastBlink2 = currentMillis;
     ledState2 = !ledState2;
     digitalWrite(LED2_Pin, ledState2);
   }
 
-  // LED 3: blinkt alle 150 ms
   if (currentMillis - lastBlink3 >= 150) {
     lastBlink3 = currentMillis;
     ledState3 = !ledState3;
@@ -237,7 +246,6 @@ if (mp3 && mp3->isRunning()) {
   }
 
 } else {
-  // Alle LEDs aus, wenn nichts spielt
   digitalWrite(LED1_Pin, LOW);
   digitalWrite(LED2_Pin, LOW);
   digitalWrite(LED3_Pin, LOW);
@@ -284,6 +292,7 @@ void stopPlaying() {
     mp3->stop();
     delete mp3;
     mp3 = NULL;
+    currentMp3Filename = "";
   }
   if (wav) {
     wav->stop();
@@ -325,9 +334,12 @@ void onMqttMessage(char* topic, byte* payload, unsigned int mlength)  {
 
   char newMsg[MQTT_MSG_SIZE];
 
-  if (mlength > 0) {
-    memset(newMsg, '\0' , sizeof(newMsg));
-    memcpy(newMsg, payload, mlength);
+if (mlength > 0) {
+  memset(newMsg, '\0', sizeof(newMsg));     // Alles nullen
+  memcpy(newMsg, payload, mlength);         // Bytes kopieren
+  newMsg[mlength] = '\0';                   // Sicherheitshalber nullterminieren!
+}
+
 #ifdef DEBUG_FLAG
     Serial.println();
     Serial.print(F("Requested ["));
@@ -336,61 +348,114 @@ void onMqttMessage(char* topic, byte* payload, unsigned int mlength)  {
     Serial.println(newMsg);
 #endif
     // got a new URL to play ------------------------------------------------
-    if ( !strcmp(topic, mqttFullTopic("play") ) ) {
-      stopPlaying();
-      file_http = new AudioFileSourceHTTPStream();
-      if ( file_http->open(newMsg)) {
-        broadcastStatus("status", "playing");
-        updateLEDBrightness(50);                    // dim while playing
-        buff = new AudioFileSourceBuffer(file_http, preallocateBuffer, preallocateBufferSize);
-        mp3 = new AudioGeneratorMP3();
-        mp3->begin(buff, out);
-      } else {
-        stopPlaying();
-        broadcastStatus("status", "error");
-        broadcastStatus("status", "idle");
-      }
+if (!strcmp(topic, mqttFullTopic("play"))) {
+  stopPlaying();
+  file_http = new AudioFileSourceHTTPStream();
+  if (file_http->open(newMsg)) {
+    currentMp3Filename = extractFilename(String(newMsg)); // hier speichern
+    shouldBlink = !currentMp3Filename.substring(0, 4).equalsIgnoreCase("song");
+    
+    // 🔽 Dateiname prüfen
+    if (currentMp3Filename.startsWith("song")) {
+      shouldBlink = false;
+    } else {
+      shouldBlink = true;
     }
 
-    // got a new URL to play ------------------------------------------------
-    if ( !strcmp(topic, mqttFullTopic("stream"))) {
-      stopPlaying();
-      file_icy = new AudioFileSourceICYStream();
-      if ( file_icy->open(newMsg)) {
-        broadcastStatus("status", "playing");
-        updateLEDBrightness(50);                  // dim while playing
-        buff = new AudioFileSourceBuffer(file_icy, preallocateBuffer, preallocateBufferSize);
-        mp3 = new AudioGeneratorMP3();
-        mp3->begin(buff, out);
-      } else {
-        stopPlaying();
-        broadcastStatus("status", "error");
-        broadcastStatus("status", "idle");
-      }
-    }
+    broadcastStatus("status", "playing");
+    updateLEDBrightness(50);
 
-    // got a tone request --------------------------------------------------
-    if ( !strcmp(topic, mqttFullTopic("tone") ) ) {
-      stopPlaying();
-      broadcastStatus("status", "playing");
-      updateLEDBrightness(50);                        // dim while playing
-      file_progmem = new AudioFileSourcePROGMEM( newMsg, sizeof(newMsg) );
-      rtttl = new AudioGeneratorRTTTL();
-      rtttl->begin(file_progmem, out);
-      broadcastStatus("status", "idle");
-    }
+    buff = new AudioFileSourceBuffer(file_http, preallocateBuffer, preallocateBufferSize);
+    mp3 = new AudioGeneratorMP3();
+    mp3->begin(buff, out);
+  } else {
+    stopPlaying();
+    currentMp3Filename = "";
+    shouldBlink = false;  // sicherheitshalber
+    broadcastStatus("status", "error");
+    broadcastStatus("status", "idle");
+  }
+}
 
-    //got a TTS request ----------------------------------------------------
-    if ( !strcmp(topic, mqttFullTopic("say"))) {
-      stopPlaying();
-      broadcastStatus("status", "playing");
-      updateLEDBrightness(50);                      // dim while playing
-      ESP8266SAM *sam = new ESP8266SAM;
-      sam->Say(out, newMsg);
-      delete sam;
-      stopPlaying();
-      broadcastStatus("status", "idle");
+
+if (!strcmp(topic, mqttFullTopic("stream"))) {
+  stopPlaying();
+  file_icy = new AudioFileSourceICYStream();
+  if (file_icy->open(newMsg)) {
+    currentMp3Filename = extractFilename(String(newMsg)); // speichern
+    broadcastStatus("status", "playing");
+    updateLEDBrightness(50);
+    buff = new AudioFileSourceBuffer(file_icy, preallocateBuffer, preallocateBufferSize);
+    mp3 = new AudioGeneratorMP3();
+    mp3->begin(buff, out);
+  } else {
+    stopPlaying();
+    currentMp3Filename = "";
+    broadcastStatus("status", "error");
+    broadcastStatus("status", "idle");
+  }
+}
+
+
+// Bei tone (RTTTL) kein LED Blinken
+if ( !strcmp(topic, mqttFullTopic("tone") ) ) {
+  stopPlaying();
+  isMP3Playing = false;
+  broadcastStatus("status", "playing");
+  updateLEDBrightness(50);
+  file_progmem = new AudioFileSourcePROGMEM( newMsg, sizeof(newMsg) );
+  rtttl = new AudioGeneratorRTTTL();
+  rtttl->begin(file_progmem, out);
+  broadcastStatus("status", "idle");
+}
+
+if (!strcmp(topic, mqttFullTopic("say"))) {
+  stopPlaying();
+  broadcastStatus("status", "playing");
+  updateLEDBrightness(50);
+
+  shouldBlink = true;  // aktivieren, falls loop() noch was tun kann (optional)
+
+  ESP8266SAM *sam = new ESP8266SAM;
+
+  // LED-Blinken manuell während TTS
+  unsigned long duration = strlen(newMsg) * 100;  // z. B. 100 ms pro Zeichen
+  unsigned long ttsStart = millis();
+  unsigned long blinkLast = 0;
+  bool ledState = false;
+
+  // Start Ausgabe (blockiert!)
+  sam->Say(out, newMsg);
+
+  // Simulierter Blink während Say (da Say blockiert!)
+  while (millis() - ttsStart < duration) {
+    if (millis() - blinkLast > 100) {
+      blinkLast = millis();
+      ledState = !ledState;
+      digitalWrite(LED1_Pin, ledState);
+      digitalWrite(LED2_Pin, ledState);
+      digitalWrite(LED3_Pin, ledState);
     }
+    delay(10);  // Mini-Pause, damit WiFi nicht stirbt
+  }
+
+  // LEDs aus
+  digitalWrite(LED1_Pin, LOW);
+  digitalWrite(LED2_Pin, LOW);
+  digitalWrite(LED3_Pin, LOW);
+
+  delete sam;
+
+  shouldBlink = false;
+  stopPlaying();
+  broadcastStatus("status", "idle");
+}
+
+// Bei stop kein LED Blinken
+if ( !strcmp(topic, mqttFullTopic("stop"))) {
+  stopPlaying();
+  isMP3Playing = false;
+}
 
     // got a volume request, expecting double [0.0,1.0] ---------------------
     if ( !strcmp(topic, mqttFullTopic("volume"))) {
@@ -403,7 +468,6 @@ void onMqttMessage(char* topic, byte* payload, unsigned int mlength)  {
     // got a stop request  --------------------------------------------------
     if ( !strcmp(topic, mqttFullTopic("stop"))) {
       stopPlaying();
-    }
   }
 }
 
