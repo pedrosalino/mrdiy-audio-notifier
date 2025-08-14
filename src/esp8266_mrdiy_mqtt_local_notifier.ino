@@ -1,7 +1,10 @@
-/*  ============================================================================================================
-    Notifier Ergänzung : 3LED Blink bei Sprachwiedergabe ( TTl und mp3 ohne "song" am Anfang des Dateinamens)
+/*  ========================================================================================================================================
     MrDIY Audio Notifier is a cloud-free media notifier that can play MP3s, stream icecast radios, read text 
     and play RTTTL ringtones. It is controller over MQTT.
+	Notifier Ergänzung durch pedrosalino :Version  "Gollino 3LED Notifier 2e2"   3LED Blink bei Sprachwiedergabe mp3 Gollino oder
+	RTTTl und mp3 Musik ("song" am Anfang des Dateinamens). Zusätzlich mqtt für led1,2,3, zusätzlich mqtt für Led4,5
+	5 Scripte über IObroker Blockly:     1 Pausenmusik, 2 Gollino Texte bei Motion
+	                                     3 Motion umschalten   4 LED für Pausenmusik  5 LED für Gollino Texte
 
       Option 1) Connect your audio jack to the Rx and GN pins. Then connect the audio jack to an external amplifier. 
       Option 2) Use an extenal DAC (like MAX98357A) and uncomment "#define USE_I2S" in the code.
@@ -34,7 +37,7 @@
 
                   "playing"       either paying an mp3, a ringtone or saying a text
                   "idle"          idle and waiting for a command
-                  "error"         error when receiving a command: example: MP3 file URL can't be loaded
+                 // "error"         error when receiving a command: example: MP3 file URL can't be loaded"
                   
      - The LWT MQTT topic: "your_custom_topic/LWT" with values:
                    "online"       
@@ -74,7 +77,12 @@
 #include "Arduino.h"
 #include "boot_sound.h"
 #include "ESP8266WiFi.h"
-#include "PubSubClient.h"
+#include <PubSubClient.h>
+
+bool lastMotionState = false;  // global definieren
+WiFiClient espClient;
+PubSubClient client(espClient);  // Das ist dein MQTT-Client
+
 #include "AudioFileSourceHTTPStream.h"
 #include "AudioFileSourceICYStream.h"
 #include "AudioFileSourcePROGMEM.h"
@@ -144,15 +152,21 @@ iotwebconf::TextParameter mqttUserNameParam = iotwebconf::TextParameter("MQTT us
 iotwebconf::PasswordParameter mqttUserPasswordParam = iotwebconf::PasswordParameter("MQTT password", "mqttPass", mqttUserPassword, sizeof(mqttUserPassword), "password");
 iotwebconf::TextParameter mqttTopicParam = iotwebconf::TextParameter("MQTT Topic", "mqttTopic", mqttTopicPrefix, sizeof(mqttTopicPrefix));
 
-#define LED1_Pin D5  // z. B. GPIO14
-#define LED2_Pin D6  // z. B. GPIO12
-#define LED3_Pin D7  // z. B. GPIO13
+#define PIR_PIN D1
+
+
+const int LED1_Pin = D5;  // z. B. GPIO14
+const int LED2_Pin = D6;  // z. B. GPIO12
+const int LED3_Pin = D7;  // z. B. GPIO13
+const int LED4_Pin = D0;  // z. B. GPIO16
+const int LED5_Pin = D2;  // z. B. GPIO4
+
 
 unsigned long lastBlink1 = 0;
 unsigned long lastBlink2 = 0;
 unsigned long lastBlink3 = 0;
 
-bool ledState1 = false;
+bool ledState1 = false; // deklaration ledstate(x) boulean
 bool ledState2 = false;
 bool ledState3 = false;
 
@@ -167,17 +181,75 @@ String extractFilename(String url) {
   return url.substring(lastSlash + 1);
 }
 
+void callback(char* topic, byte* payload, unsigned int length) {
+  // 1. Payload in char-Array kopieren und terminieren
+  char msg[length + 1];
+  strncpy(msg, (char*)payload, length);
+  msg[length] = '\0';
+
+  // 2. Debug-Ausgabe
+  Serial.printf("Received MQTT: [%s] %s\n", topic, msg);
+
+  // 3. LED Control Handling
+  if (strcmp(topic, mqttFullTopic("led1")) == 0) {
+    bool state = (strcmp(msg, "1") == 0 || strcmp(msg, "on") == 0);
+    digitalWrite(LED1_Pin, state);
+    Serial.printf("Set LED1: %s\n", state ? "ON" : "OFF");
+    mqttClient.publish(mqttFullTopic("led1/status"), msg, true);
+    return;
+  }
+  else if (strcmp(topic, mqttFullTopic("led2")) == 0) {
+    bool state = (strcmp(msg, "1") == 0 || strcmp(msg, "on") == 0);
+    digitalWrite(LED2_Pin, state);
+    Serial.printf("Set LED2: %s\n", state ? "ON" : "OFF");
+    mqttClient.publish(mqttFullTopic("led2/status"), msg, true);
+    return;
+  }
+  else if (strcmp(topic, mqttFullTopic("led3")) == 0) {
+    bool state = (strcmp(msg, "1") == 0 || strcmp(msg, "on") == 0);
+    digitalWrite(LED3_Pin, state);
+    Serial.printf("Set LED3: %s\n", state ? "ON" : "OFF");
+    mqttClient.publish(mqttFullTopic("led3/status"), msg, true);
+    return;
+  }
+ else if (strcmp(topic, mqttFullTopic("led4")) == 0) {
+    bool state = (strcmp(msg, "1") == 0 || strcmp(msg, "on") == 0);
+    digitalWrite(LED4_Pin, state);
+    Serial.printf("Set LED4: %s\n", state ? "ON" : "OFF");
+    mqttClient.publish(mqttFullTopic("led4/status"), msg, true);
+    return;
+  }
+ else if (strcmp(topic, mqttFullTopic("led5")) == 0) {
+    bool state = (strcmp(msg, "1") == 0 || strcmp(msg, "on") == 0);
+    digitalWrite(LED5_Pin, state);
+    Serial.printf("Set LED5: %s\n", state ? "ON" : "OFF");
+    mqttClient.publish(mqttFullTopic("led5/status"), msg, true);
+    return;
+  }
+  // 4. Andere MQTT-Nachrichten weiterreichen (z.B. Audio)
+  Serial.println("Passing to audio handler");
+  onMqttMessage(topic, payload, length);
+}
 /* ################################## Setup ############################################# */
 
 void setup() {
 
-#ifdef DEBUG_FLAG
   Serial.begin(115200);
-#endif
+  pinMode(PIR_PIN, INPUT);
 
-pinMode(LED1_Pin, OUTPUT);
-pinMode(LED2_Pin, OUTPUT);
-pinMode(LED3_Pin, OUTPUT);
+  pinMode(LED1_Pin, OUTPUT);  // D1
+  pinMode(LED2_Pin, OUTPUT);  // D5
+  pinMode(LED3_Pin, OUTPUT);  // D6
+  pinMode(LED4_Pin, OUTPUT);  // D0
+  pinMode(LED5_Pin, OUTPUT);  // D2
+  digitalWrite(LED1_Pin, LOW);
+  digitalWrite(LED2_Pin, LOW);
+  digitalWrite(LED3_Pin, LOW);  
+  digitalWrite(LED4_Pin, LOW);
+  digitalWrite(LED5_Pin, LOW);
+
+
+  mqttClient.setCallback(callback);
 
   mqttgroup.addItem(&mqttServerParam);
   mqttgroup.addItem(&mqttUserNameParam);
@@ -192,15 +264,14 @@ pinMode(LED3_Pin, OUTPUT);
   iotWebConf.skipApStartup();
 
   boolean validConfig = iotWebConf.init();
-  if (!validConfig)
-  {
+  if (!validConfig) {
     mqttServer[0] = '\0';
     mqttUserName[0] = '\0';
     mqttUserPassword[0] = '\0';
   }
 
   server.on("/", [] { iotWebConf.handleConfig(); });
-  server.onNotFound([] {  iotWebConf.handleNotFound();  });
+  server.onNotFound([] { iotWebConf.handleNotFound(); });
 
 #ifdef USE_I2S
   out = new AudioOutputI2S();
@@ -215,42 +286,60 @@ pinMode(LED3_Pin, OUTPUT);
 /* ##################################### Loop ############################################# */
 
 void loop() {
+  // 1. PIR-Sensor auslesen
+  bool motion = digitalRead(PIR_PIN);
 
-  mqttReconnect();
+  // 2. Bei Zustandsänderung MQTT-Nachricht senden
+  if (motion != lastMotionState) {
+    lastMotionState = motion;
+    Serial.print("PIR-Status geändert: ");
+    Serial.println(motion);
+    
+    // Nur EIN MQTT-Publish mit Retain-Flag
+    mqttClient.publish(mqttFullTopic("motion"), motion ? "1" : "0", true);
+    
+    // Debug-Ausgabe
+    Serial.println(motion ? "Bewegung!" : "Keine Bewegung");
+    delay(500);  // Entprellung
+  }
+
+  // MQTT-Verbindung aufrechterhalten
+  if (!mqttClient.connected()) {
+    mqttReconnect();
+  }
   mqttClient.loop();
-  if (!mp3) iotWebConf.doLoop();      // give processor priority to audio
-  if (mp3   && !mp3->loop())    stopPlaying();
-  if (wav   && !wav->loop())    stopPlaying();
-  if (rtttl && !rtttl->loop())  stopPlaying();
+
+  // Audio-Verarbeitung
+  if (!mp3) iotWebConf.doLoop();
+  if (mp3 && !mp3->loop()) stopPlaying();
+  if (wav && !wav->loop()) stopPlaying();
+  if (rtttl && !rtttl->loop()) stopPlaying();
 
   // LED-Blinksteuerung
-unsigned long currentMillis = millis();
+  unsigned long currentMillis = millis();
+  if (mp3 && mp3->isRunning() && shouldBlink) {
+    if (currentMillis - lastBlink1 >= 100) {
+      lastBlink1 = currentMillis;
+      ledState1 = !ledState1;
+      digitalWrite(LED1_Pin, ledState1);
+    }
 
-if (mp3 && mp3->isRunning() && shouldBlink) {
-  if (currentMillis - lastBlink1 >= 50) {
-    lastBlink1 = currentMillis;
-    ledState1 = !ledState1;
-    digitalWrite(LED1_Pin, ledState1);
+    if (currentMillis - lastBlink2 >= 200) {
+      lastBlink2 = currentMillis;
+      ledState2 = !ledState2;
+      digitalWrite(LED2_Pin, ledState2);
+    }
+
+    if (currentMillis - lastBlink3 >= 300) {
+      lastBlink3 = currentMillis;
+      ledState3 = !ledState3;
+      digitalWrite(LED3_Pin, ledState3);
+    }
+  } else {
+    digitalWrite(LED1_Pin, LOW);
+    digitalWrite(LED2_Pin, LOW);
+    digitalWrite(LED3_Pin, LOW);
   }
-
-  if (currentMillis - lastBlink2 >= 100) {
-    lastBlink2 = currentMillis;
-    ledState2 = !ledState2;
-    digitalWrite(LED2_Pin, ledState2);
-  }
-
-  if (currentMillis - lastBlink3 >= 150) {
-    lastBlink3 = currentMillis;
-    ledState3 = !ledState3;
-    digitalWrite(LED3_Pin, ledState3);
-  }
-
-} else {
-  digitalWrite(LED1_Pin, LOW);
-  digitalWrite(LED2_Pin, LOW);
-  digitalWrite(LED3_Pin, LOW);
-}
-
 
 #ifdef DEBUG_FLAG
   if (mp3 && mp3->isRunning()) {
@@ -260,12 +349,12 @@ if (mp3 && mp3->isRunning() && shouldBlink) {
       Serial.print(F("Free: "));
       Serial.print(ESP.getFreeHeap(), DEC);
       Serial.print(F("  ("));
-      Serial.print( ESP.getFreeHeap() - ESP.getMaxFreeBlockSize(), DEC);
+      Serial.print(ESP.getFreeHeap() - ESP.getMaxFreeBlockSize(), DEC);
       Serial.print(F(" lost)"));
       Serial.print(F("  Fragmentation: "));
       Serial.print(ESP.getHeapFragmentation(), DEC);
       Serial.print(F("%"));
-      if ( ESP.getHeapFragmentation() > 40) Serial.print(F("  ----------- "));
+      if (ESP.getHeapFragmentation() > 40) Serial.print(F("  ----------- "));
       Serial.println();
     }
   }
@@ -331,8 +420,8 @@ void stopPlaying() {
 /* ################################## MQTT ############################################### */
 
 void onMqttMessage(char* topic, byte* payload, unsigned int mlength)  {
-
-  char newMsg[MQTT_MSG_SIZE];
+ 
+ char newMsg[MQTT_MSG_SIZE];
 
 if (mlength > 0) {
   memset(newMsg, '\0', sizeof(newMsg));     // Alles nullen
@@ -409,6 +498,7 @@ if ( !strcmp(topic, mqttFullTopic("tone") ) ) {
   broadcastStatus("status", "idle");
 }
 
+ // TTS mit LED-Blinken während Say
 if (!strcmp(topic, mqttFullTopic("say"))) {
   stopPlaying();
   broadcastStatus("status", "playing");
@@ -509,6 +599,12 @@ void mqttReconnect() {
       mqttClient.subscribe(mqttFullTopic("say"));
       mqttClient.subscribe(mqttFullTopic("stop"));
       mqttClient.subscribe(mqttFullTopic("volume"));
+      mqttClient.subscribe(mqttFullTopic("led1"));
+      mqttClient.subscribe(mqttFullTopic("led2"));
+      mqttClient.subscribe(mqttFullTopic("led3"));
+      mqttClient.subscribe(mqttFullTopic("led4"));
+      mqttClient.subscribe(mqttFullTopic("led5"));
+
 #ifdef DEBUG_FLAG
       Serial.println(F("Connected to MQTT"));
 #endif
@@ -536,7 +632,6 @@ void wifiConnected() {
 #endif
   playBootSound();
   mqttClient.setServer(mqttServer, port);
-  mqttClient.setCallback(onMqttMessage);
   mqttClient.setBufferSize(MQTT_MSG_SIZE);
   mqttReconnect();
 }
